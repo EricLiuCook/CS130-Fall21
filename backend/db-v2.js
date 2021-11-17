@@ -186,6 +186,9 @@ class Database {
      */
      static schedule_jobs(next) {
         let currentTime = new Date().getTime();
+        let max = 1000000;
+        let min = 100000;
+        let randCode = Math.floor(Math.random() * (max - min) + min);
         let query1 = {
             $and:[
                 {$or: [{ status : 1 }, { status : 6 }]},
@@ -200,8 +203,7 @@ class Database {
                     { type : 2 },
                     { driverStatus : 1 }
                 ]
-            };    
-            
+            }; 
             for (let jobToBeAssigned of jobsToBeAssigned) {
                 //console.log('should not be here');
                 Database.db('GrandValet').collection('Users').aggregate([
@@ -232,7 +234,7 @@ class Database {
                     if (driversAvailable.length > 0)
                     {
                         let assignedDriver = driversAvailable[0].username;
-                        Database.db('GrandValet').collection('Jobs').updateOne({jobId: jobToBeAssigned.jobId}, { $set: {driverUsername: assignedDriver, status: jobToBeAssigned.status+1 }});
+                        Database.db('GrandValet').collection('Jobs').updateOne({jobId: jobToBeAssigned.jobId}, { $set: {driverUsername: assignedDriver, status: jobToBeAssigned.status+1, code: randCode }});
                     }
                 })
             }
@@ -256,6 +258,22 @@ class Database {
                 }
                 return jobs;
             });
+        });
+    }
+
+    /**
+     * Reads the active job assigned with a customer.
+     * @param {string} username - Username of the requested customer.
+     * @returns {Job[]} - JSON of the active job associated with the customer.
+     */
+     static read_customerJob(username, next) {
+        return Database.db('GrandValet').collection('Jobs').findOne({$and: [{customerUsername: username}, { status : { $ne :  13}}]})
+        .then((job) => {
+            if (job == null) 
+            {
+                return null;
+            }
+            return job;
         });
     }
 
@@ -293,7 +311,7 @@ class Database {
                 let newData = {type: body.type, jobId: body.jobId, scheduledTime: body.scheduledTime, status: body.status, licenceState: body.licenceState,
                     licenceNum: body.licenceNum, code: body.code, hubId: body.hubId, carLocation: body.carLocation, note: body.note,
                     driverUsername: body.driverUsername, customerUsername: body.customerUsername, advanceState: body.advanceState};
-                Database.db('GrandValet').collection('Meta').updateOne({}, { $set: {maxJobId: body.JobId}});
+                Database.db('GrandValet').collection('Meta').updateOne({}, { $set: {maxJobId: body.jobId}});
                 Database.db('GrandValet').collection('Jobs').insertOne(newData);
                 return;
             }
