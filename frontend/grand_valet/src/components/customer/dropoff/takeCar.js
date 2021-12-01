@@ -1,15 +1,18 @@
 import React from "react";
 import './dropoffSChedule.css';
 import 'react-tabulator/lib/styles.css';
+import { ReactTabulator } from 'react-tabulator'
 import 'react-tabulator/css/bootstrap/tabulator_bootstrap.min.css';
 import Button from '@mui/material/Button';
 import CssBaseline from '@mui/material/CssBaseline';
 import TextField from '@mui/material/TextField';
+import Link from '@mui/material/Link';
 import Paper from '@mui/material/Paper';
 import Box from '@mui/material/Box';
 import Grid from '@mui/material/Grid';
 import Typography from '@mui/material/Typography';
-import {createTheme, ThemeProvider} from '@mui/material/styles';
+import { createTheme, ThemeProvider } from '@mui/material/styles';
+import TimePicker from 'rc-time-picker';
 import 'rc-time-picker/assets/index.css';
 import Map from './../../util/map';
 import {HTTPHandler} from "../../util/http";
@@ -23,6 +26,8 @@ import {HTTPHandler} from "../../util/http";
 
 
 const theme = createTheme();
+
+const state_options = ["California", "New York"];
 
 
 const dummyHubs = [
@@ -90,7 +95,7 @@ function errors(err) {
 }
 
 
-export default class DropoffComplete extends React.Component{
+export default class TakeCar extends React.Component{
     // el = React.createRef();
     // tabulator = null; //variable to hold your table
 
@@ -103,6 +108,10 @@ export default class DropoffComplete extends React.Component{
             chosen_hub: null,
             chosen_lat: null,
             chosen_lng: null,
+            car_lat: null,
+            car_lng: null,
+            code: 0,
+            note: 'Somewhere in a parking lot'
         };
     }
 
@@ -136,44 +145,11 @@ export default class DropoffComplete extends React.Component{
         });
     };
 
-    handleSubmit = (event) => {
-        event.preventDefault();
-        const data = new FormData(event.currentTarget);
-
-        var jobId = parseInt((new URL(window.location.href)).searchParams.get("id"));
-        var scheduled_time = new Date();
-        scheduled_time.setHours(parseInt(data.get('hour').toString()));
-        scheduled_time.setMinutes(parseInt(data.get('minute').toString()));
-
-        var handler = new HTTPHandler();
-        handler.getJobsFromID(jobId)
-            .then(response => {
-                response.type = 2;
-                response.jobId = 0;
-                response.status = 0;
-                response.advanceState = [0, 0];
-                response.scheduledTime = Math.floor(scheduled_time.getTime() / 1000);
-
-                handler.asyncPostJob(response)
-                    .then(postResponse => {
-                        if (postResponse.hasOwnProperty("jobId")) {
-                            window.location.href = "/customer?stage=pickup&id=" + postResponse.jobId;
-                        } else {
-                            window.alert("Failed to create new pick up job.");
-                        }
-                    })
-            })
-    };
-
-    handleSelfPickUp = () => {
-        var jobId = parseInt((new URL(window.location.href)).searchParams.get("id"));
-        window.location.href = "/customer?stage=key&id=" + jobId.toString();
-    };
 
     componentDidMount() {
         // retrieve list of hubs.
         // convert response body into table data.
-        console.log("new");
+
         if (navigator.geolocation) {
             navigator.permissions
                 .query({ name: "geolocation" })
@@ -192,15 +168,53 @@ export default class DropoffComplete extends React.Component{
 
         var marker_crd = [];
 
-        for (let i = 0; i < table_data.length; i ++) {
-            marker_crd.push({lat: table_data[i].latitude, lng: table_data[i].longitude});
-        }
+        // for (let i = 0; i < table_data.length; i ++) {
+        //     marker_crd.push({lat: table_data[i].latitude, lng: table_data[i].longitude});
+        // }
+
+        marker_crd.push({lat: this.state.chosen_lat, lng: this.state.chosen_lng});
+        marker_crd.push({lat: this.state.car_lat, lng: this.state.car_lng});
 
         this.setState({
             marker_crd: marker_crd
-        })
+        });
 
+        var id = parseInt((new URL(window.location.href)).searchParams.get("id"));
+        console.log(id);
+        var handler = new HTTPHandler();
+        handler.getJobsFromID(id)
+            .then(response => {
+                if (response.note !== null) {
+                    this.setState({
+                        note: response.note
+                    });
+                } else {
+                    this.setState({
+                        note: "An empty note for testing purpose"
+                    });
+                }
+            })
     }
+
+    handleSubmit = () => {
+        var id = parseInt((new URL(window.location.href)).searchParams.get("id"));
+        var handler = new HTTPHandler();
+        handler.getJobsFromID(id)
+            .then(response => {
+                response.status = 13;
+                return response;
+            })
+            .then(updated => {
+                handler.asyncPostJob(updated)
+                    .then(response => {
+                        console.log(response);
+                        window.location.href = "/customer?stage=schedule";
+                    })
+                    .catch(err => console.log(err.toString()))
+            })
+            .catch(err => console.log(err.toString()));
+
+    };
 
     //add table holder element to DOM
     render(){
@@ -223,7 +237,7 @@ export default class DropoffComplete extends React.Component{
                         }}
                     >
                         <div style={{display: 'flex',  justifyContent:'center', "width":"100%", "height":"100%"}}>
-                            <Map data-testid="complete-map" center_lat={this.state.user_lat} center_lng={this.state.user_lng} marker_crd={this.state.marker_crd} chosen_lat={this.state.chosen_lat} chosen_lng={this.state.chosen_lng}/>
+                            <Map data-testid="schedule-map" center_lat={this.state.user_lat} center_lng={this.state.user_lng} marker_crd={this.state.marker_crd} chosen_lat={this.state.chosen_lat} chosen_lng={this.state.chosen_lng}/>
                         </div>
                     </Grid>
                     <Grid item xs={12} sm={8} md={5} component={Paper} elevation={6} square>
@@ -237,57 +251,20 @@ export default class DropoffComplete extends React.Component{
                             }}
                         >
                             <Typography component="h1" variant="h5">
-                                Your driver has parked your car!
+                                Take car out
                             </Typography>
-                            <Typography component="h1" variant="h5">
-                                Schedule Pick Up
-                            </Typography>
-                            <Box data-testid="complete-form" onSubmit={this.handleSubmit} component="form" noValidate sx={{ mt: 1 }} >
-                                <div style={{display:"flex", flexDirection:"row"}}>
-                                    <TextField
-                                        margin="normal"
-                                        required
-                                        fullWidth
-                                        name="hour"
-                                        label="Pick up Hour "
-                                        id="hour"
-                                        autoFocus
-                                        style={{padding:5}}
-                                    />
-
-                                    <TextField
-                                        margin="normal"
-                                        required
-                                        fullWidth
-                                        name="minute"
-                                        label="Pick up Minute "
-                                        id="minute"
-                                        autoFocus
-                                        style={{padding:5}}
-                                    />
-                                </div>
-                                <Button
-                                    type="submit"
-                                    fullWidth
-                                    variant="contained"
-                                    sx={{ mt: 3, mb: 2 }}
-
-                                >
-                                    Submit Request
-                                </Button>
-
-                            </Box>
-                            <Box data-testid="complete-form" component="form" noValidate sx={{ mt: 1 }} >
+                            <Box data-testid="schedule-form" component="form" noValidate sx={{ mt: 1 }} >
+                                Note for location: <br></br>
+                                {this.state.note}
                                 <Button
                                     // type="submit"
+                                    onClick={this.handleSubmit}
                                     fullWidth
-                                    onClick={this.handleSelfPickUp}
                                     variant="contained"
                                     sx={{ mt: 3, mb: 2 }}
                                 >
-                                    Pick Up Myself
+                                    Confirm
                                 </Button>
-
                             </Box>
                         </Box>
                     </Grid>
